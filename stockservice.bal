@@ -1,5 +1,7 @@
 import ballerina/http;
 import ballerina/log;
+import ballerina/io;
+import ballerinax/docker;
 
 type StockRecord record {
     int total;
@@ -9,25 +11,41 @@ StockRecord stockRecord1 = {total: 100, vestedAmount: 90};
 StockRecord stockRecord2 = {total: 120, vestedAmount: 105};
 StockRecord stockRecord3 = {total: 200, vestedAmount: 160};
 StockRecord stockRecord4 = {total: 75, vestedAmount: 55};
-map stockOptionMap = { "001" : stockRecord1 , "002": stockRecord2, "003": stockRecord3, "004": stockRecord4 };
+map stockOptionMap = { "bob" : stockRecord1 , "alice": stockRecord2, "jack": stockRecord3, "peter": stockRecord4 };
 
-@http:ServiceConfig {
-    basePath:"/stocks"
+@docker:Config {
+    registry:"wso2vick",
+    name:"sampleapp-stock",
+    tag:"v1.0"
 }
-service<http:Service> hello bind { port: 9090 } {
-
+@http:ServiceConfig {
+    basePath:"/"
+}
+service<http:Service> stock bind { port: 8080 } {
     @http:ResourceConfig {
-        methods:["GET"],
-        path:"/{userId}/options"
+        methods: ["GET"],
+        path:"/options"
     }
-    getEmployeeId (endpoint caller, http:Request req, string userId) {
+    options (endpoint caller, http:Request req) {
         http:Response res = new;
-        if (stockOptionMap.hasKey(userId)) {
-            StockRecord stockRecord = check <StockRecord>stockOptionMap[userId];
-            json stockResult = { options: { total: stockRecord.total, vestedAmount: stockRecord.vestedAmount} } ;
-            res.setJsonPayload(stockResult);
+
+        //check the header
+        if (req.hasHeader("x-emp-name")) {
+            string empName = req.getHeader("x-emp-name");
+
+            if (stockOptionMap.hasKey(empName)) {
+                StockRecord stockRecord = check <StockRecord>stockOptionMap[empName];
+                json stockResult = { options: { total: stockRecord.total, vestedAmount: stockRecord.vestedAmount} } ;
+                res.setJsonPayload(stockResult);
+            } else {
+                res.statusCode = 404;
+                res.setContentType("application/json");
+                res.setJsonPayload({});
+            }
         } else {
-            res.statusCode = 404;
+            res.statusCode = 401;
+            res.setContentType("application/json");
+            res.setJsonPayload({});
         }
         caller->respond(res) but { error e => log:printError("Error sending response", err = e) };
     }
